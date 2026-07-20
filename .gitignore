@@ -21,11 +21,17 @@ dump.rdb
 
 # Maestro output
 *_<timestamp>/
+maestro/examples/output/
+maestro/examples/sweep-output/
 
 # Merlin output
 merlin_info/
-*.out
-*.err
+
+# Pip/tmp cache
+.tmp/
+
+# PDF reference files
+*.pdf
 
 # IDE
 .vscode/
