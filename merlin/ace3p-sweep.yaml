@@ -1,0 +1,109 @@
+description:
+  name: ace3p-omega3p-large-sweep
+  description: |
+    Large-scale Omega3P parameter sweep using Merlin distributed execution.
+    Uses programmatic parameter generation (Latin Hypercube Sampling) to
+    explore cavity geometry space with 100+ configurations.
+    Workers pull tasks from Redis queue across multiple Slurm allocations.
+
+env:
+  variables:
+    ACE3P_BIN: /sdf/group/rfar/lge/sdf/ace3p/build/bin
+    MESH_TEMPLATE: $(SPECROOT)/templates/pillbox4.ncdf
+    INPUT_TEMPLATE: $(SPECROOT)/../maestro/templates/omega3p.template
+    N_SAMPLES: 100
+
+batch:
+  type: slurm
+  bank: rfar
+
+merlin:
+  resources:
+    workers:
+      sim_workers:
+        args: --concurrency 4 --prefetch-multiplier 1 -O fair
+        steps: [prepare-input, omega3p-solve]
+        nodes: 1
+      analysis_workers:
+        args: --concurrency 8 --prefetch-multiplier 2 -O fair
+        steps: [extract-results]
+
+  samples:
+    generate:
+      cmd: |
+        python3 $(SPECROOT)/scripts/generate_params.py \
+          --n $(N_SAMPLES) \
+          --method lhs \
+          --output $(MERLIN_INFO)/samples.npy
+    file: $(MERLIN_INFO)/samples.npy
+    column_labels: [cavity_radius, iris_radius, fe_order, freq_shift]
+
+study:
+  - name: prepare-input
+    description: Generate ACE3P input from sampled parameters
+    run:
+      cmd: |
+        echo "Preparing input: cavity_r=$(cavity_radius) iris_r=$(iris_radius) order=$(fe_order) shift=$(freq_shift)"
+        mkdir -p $(WORKSPACE)
+        python3 $(SPECROOT)/scripts/generate_input.py \
+          --cavity-radius $(cavity_radius) \
+          --iris-radius $(iris_radius) \
+          --fe-order $(fe_order) \
+          --freq-shift $(freq_shift) \
+          --template $(INPUT_TEMPLATE) \
+          --output $(WORKSPACE)/run.omega3p
+        echo "Input file ready"
+      task_queue: sim_workers
+      retry_delay: 5
+      max_retries: 2
+
+  - name: omega3p-solve
+    description: Run Omega3P eigenmode solver (distributed via Redis)
+    run:
+      cmd: |
+        echo "Solving: cavity_r=$(cavity_radius) iris_r=$(iris_radius)"
+        cd $(WORKSPACE)
+        ln -sf $(prepare-input.workspace)/run.omega3p .
+        ln -sf $(MESH_TEMPLATE) ./pillbox4.ncdf
+        srun -n 64 $(ACE3P_BIN)/omega3p run.omega3p
+        echo "Solver complete"
+      depends: [prepare-input]
+      task_queue: sim_workers
+      nodes: 1
+      procs: 64
+      walltime: "00:30:00"
+      retry_delay: 30
+      max_retries: 3
+
+  - name: extract-results
+    description: Parse eigenvalues from each solver output
+    run:
+      cmd: |
+        cd $(omega3p-solve.workspace)
+        FREQ=$(grep "Frequency:" *.out 2>/dev/null | head -1 | awk '{print $2}')
+        if [ -z "$FREQ" ]; then
+          echo "No frequency found - marking as failed"
+          exit $(MERLIN_RETRY)
+        fi
+        echo "$(cavity_radius) $(iris_radius) $(fe_order) $(freq_shift) $FREQ" \
+          > $(WORKSPACE)/result.csv
+        echo "Result: freq=$FREQ"
+      depends: [omega3p-solve]
+      task_queue: analysis_workers
+      retry_delay: 5
+      max_retries: 2
+
+  - name: aggregate
+    description: Build full results table from all sweep points
+    run:
+      cmd: |
+        echo "=== Large-Scale Parameter Sweep Results ===" > $(WORKSPACE)/results.csv
+        echo "cavity_radius iris_radius fe_order freq_shift computed_freq" >> $(WORKSPACE)/results.csv
+        find $(extract-results.workspace) -name "result.csv" -exec cat {} + \
+          >> $(WORKSPACE)/results.csv
+        N_RESULTS=$(wc -l < $(WORKSPACE)/results.csv)
+        echo "Collected $((N_RESULTS - 2)) results from $(N_SAMPLES) samples"
+        echo ""
+        echo "Top 10 results:"
+        head -12 $(WORKSPACE)/results.csv | column -t
+      depends: [extract-results_*]

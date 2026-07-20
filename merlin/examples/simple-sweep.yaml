@@ -1,0 +1,67 @@
+description:
+  name: simple-sweep
+  description: |
+    Simple Merlin example demonstrating distributed task execution.
+    Three steps: generate → process (5 tasks) → aggregate.
+    Tasks are placed on a Redis queue and executed by workers.
+
+env:
+  variables:
+    OUTPUT_PATH: ./merlin_output
+    N_TASKS: 5
+
+batch:
+  type: slurm
+  bank: rfar
+
+merlin:
+  resources:
+    workers:
+      simworkers:
+        args: --concurrency 4 --prefetch-multiplier 1 -O fair
+        steps: [process]
+
+global.parameters:
+  PARAM:
+    values: [1, 2, 3, 4, 5]
+    label: PARAM.%%
+
+study:
+  - name: generate
+    description: Generate input data for processing
+    run:
+      cmd: |
+        echo "Generating input data"
+        mkdir -p $(WORKSPACE)
+        for i in $(seq 1 $(N_TASKS)); do
+          echo "input_$i: $(echo "$i * 3.14159" | bc -l)" > $(WORKSPACE)/input_$i.txt
+        done
+        echo "Generated $(N_TASKS) input files"
+        ls $(WORKSPACE)/
+
+  - name: process
+    description: Process each parameter combination (distributed via Redis)
+    run:
+      cmd: |
+        echo "Processing PARAM=$(PARAM)"
+        sleep 2  # Simulate computation
+        RESULT=$(echo "$(PARAM) * $(PARAM) * 2.71828" | bc -l)
+        echo "$(PARAM) $RESULT" > $(WORKSPACE)/result.txt
+        echo "PARAM=$(PARAM) → result=$RESULT"
+      depends: [generate]
+      task_queue: simworkers
+
+  - name: aggregate
+    description: Collect all distributed results
+    run:
+      cmd: |
+        echo "=== Distributed Sweep Results ==="
+        echo "PARAM RESULT" > $(WORKSPACE)/summary.txt
+        for f in $(process.workspace)/PARAM.*/result.txt; do
+          if [ -f "$f" ]; then
+            cat "$f" >> $(WORKSPACE)/summary.txt
+          fi
+        done
+        echo "Summary:"
+        cat $(WORKSPACE)/summary.txt
+      depends: [process_*]

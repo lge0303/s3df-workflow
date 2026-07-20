@@ -1,0 +1,45 @@
+description:
+  name: hello-world
+  description: |
+    Minimal Maestro example to verify installation and Slurm integration on S3DF.
+    Three steps: generate data, process it, summarize results.
+
+env:
+  variables:
+    OUTPUT_DIR: ./output
+
+study:
+  - name: generate
+    description: Create sample data file
+    run:
+      cmd: |
+        echo "Generating data at $(date)"
+        mkdir -p $(OUTPUT_DIR)
+        for i in $(seq 1 10); do
+          echo "$i $(echo "$i * 2.5" | bc)" >> $(WORKSPACE)/data.txt
+        done
+        echo "Generated 10 data points"
+
+  - name: process
+    description: Process the generated data
+    run:
+      cmd: |
+        echo "Processing data at $(date)"
+        awk '{sum += $2} END {print "sum=" sum, "mean=" sum/NR}' \
+          $(generate.workspace)/data.txt > $(WORKSPACE)/results.txt
+        cat $(WORKSPACE)/results.txt
+      depends: [generate]
+
+  - name: summarize
+    description: Create final summary report
+    run:
+      cmd: |
+        echo "=== Workflow Summary ===" > $(WORKSPACE)/report.txt
+        echo "Date: $(date)" >> $(WORKSPACE)/report.txt
+        echo "Input: $(generate.workspace)/data.txt" >> $(WORKSPACE)/report.txt
+        echo "Results:" >> $(WORKSPACE)/report.txt
+        cat $(process.workspace)/results.txt >> $(WORKSPACE)/report.txt
+        echo ""
+        echo "Workflow complete. Report at $(WORKSPACE)/report.txt"
+        cat $(WORKSPACE)/report.txt
+      depends: [process]

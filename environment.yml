@@ -1,0 +1,20 @@
+name: workflow-s3df
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - redis
+  - numpy
+  - pandas
+  - matplotlib
+  - pyyaml
+  - jsonschema
+  - pip:
+    - maestrowf
+    - merlin
+    - aiida-core>=2.5
+    - aiida-workgraph
+    - anthropic
+    - rich
+    - click

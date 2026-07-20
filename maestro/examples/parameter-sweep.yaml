@@ -1,0 +1,47 @@
+description:
+  name: parameter-sweep
+  description: |
+    Demonstrates Maestro parameter sweep with fan-out/fan-in pattern.
+    Runs a synthetic computation for each parameter combination,
+    then aggregates all results.
+
+env:
+  variables:
+    SCRIPT_DIR: $(SPECROOT)/scripts
+
+global.parameters:
+  SIZE:
+    values: [10, 50, 100]
+    label: SIZE.%%
+  METHOD:
+    values: [linear, quadratic]
+    label: METHOD.%%
+
+study:
+  - name: compute
+    description: Run computation for each parameter combination
+    run:
+      cmd: |
+        echo "Computing SIZE=$(SIZE) METHOD=$(METHOD)"
+        if [ "$(METHOD)" = "linear" ]; then
+          RESULT=$(echo "$(SIZE) * 1.5" | bc)
+        else
+          RESULT=$(echo "$(SIZE) * $(SIZE) * 0.01" | bc)
+        fi
+        echo "$(SIZE) $(METHOD) $RESULT" > $(WORKSPACE)/result.txt
+        echo "Result: $RESULT"
+
+  - name: aggregate
+    description: Collect all results into a single summary
+    run:
+      cmd: |
+        echo "=== Parameter Sweep Results ===" > $(WORKSPACE)/summary.txt
+        echo "SIZE METHOD RESULT" >> $(WORKSPACE)/summary.txt
+        echo "---- ------ ------" >> $(WORKSPACE)/summary.txt
+        for f in $(compute.workspace)/*/result.txt; do
+          cat "$f" >> $(WORKSPACE)/summary.txt
+        done
+        echo ""
+        echo "Aggregated results:"
+        cat $(WORKSPACE)/summary.txt
+      depends: [compute_*]

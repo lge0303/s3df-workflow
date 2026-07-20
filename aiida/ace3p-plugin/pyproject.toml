@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aiida-ace3p"
+version = "0.1.0"
+description = "AiiDA plugin for ACE3P electromagnetic simulation suite"
+authors = [{name = "Lixin Ge", email = "lge@slac.stanford.edu"}]
+requires-python = ">=3.9"
+dependencies = [
+    "aiida-core>=2.5",
+]
+
+[project.entry-points."aiida.calculations"]
+"ace3p.omega3p" = "aiida_ace3p.calculations.omega3p:Omega3pCalculation"
+"ace3p.track3p" = "aiida_ace3p.calculations.track3p:Track3pCalculation"
+"ace3p.acdtool" = "aiida_ace3p.calculations.acdtool:AcdtoolCalculation"
+
+[project.entry-points."aiida.parsers"]
+"ace3p.omega3p" = "aiida_ace3p.parsers.omega3p:Omega3pParser"
+"ace3p.track3p" = "aiida_ace3p.parsers.track3p:Track3pParser"
+
+[project.entry-points."aiida.workflows"]
+"ace3p.omega3p_workflow" = "aiida_ace3p.workflows.omega3p:Omega3pWorkflow"

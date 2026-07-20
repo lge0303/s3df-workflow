@@ -1,0 +1,82 @@
+description:
+  name: ace3p-omega3p-sweep
+  description: |
+    Omega3P parameter sweep on S3DF.
+    Sweeps over finite element order and frequency shift,
+    producing 9 independent solver runs with result aggregation.
+
+env:
+  variables:
+    ACE3P_BIN: /sdf/group/rfar/lge/sdf/ace3p/build/bin
+    MESH_FILE: pillbox4.ncdf
+    DATA_DIR: $(SPECROOT)/data
+    TEMPLATE: $(SPECROOT)/templates/omega3p.template
+
+batch:
+  type: slurm
+  host: s3df
+  bank: rfar
+
+global.parameters:
+  FE_ORDER:
+    values: [1, 2, 3]
+    label: FE_ORDER.%%
+  FREQ_SHIFT:
+    values: [1.0e9, 2.0e9, 3.0e9]
+    label: FREQ_SHIFT.%%
+
+study:
+  - name: prepare-input
+    description: Generate .omega3p input file from template with sweep parameters
+    run:
+      cmd: |
+        echo "Preparing input: FE_ORDER=$(FE_ORDER), FREQ_SHIFT=$(FREQ_SHIFT)"
+        mkdir -p $(WORKSPACE)
+        sed -e "s/@FE_ORDER@/$(FE_ORDER)/g" \
+            -e "s/@FREQ_SHIFT@/$(FREQ_SHIFT)/g" \
+            $(TEMPLATE) > $(WORKSPACE)/sweep.omega3p
+        ln -sf $(DATA_DIR)/$(MESH_FILE) $(WORKSPACE)/
+        echo "Input file generated:"
+        cat $(WORKSPACE)/sweep.omega3p
+
+  - name: omega3p-solve
+    description: Run eigenmode solver with sweep parameters
+    run:
+      cmd: |
+        echo "Solving: FE_ORDER=$(FE_ORDER), FREQ_SHIFT=$(FREQ_SHIFT)"
+        cd $(WORKSPACE)
+        ln -sf $(prepare-input.workspace)/* .
+        $(LAUNCHER) $(ACE3P_BIN)/omega3p sweep.omega3p
+        echo "Solver complete for FE_ORDER=$(FE_ORDER) FREQ_SHIFT=$(FREQ_SHIFT)"
+      depends: [prepare-input]
+      nodes: 1
+      procs: 128
+      walltime: "00:30:00"
+
+  - name: extract-results
+    description: Parse eigenvalues from solver output
+    run:
+      cmd: |
+        echo "Extracting results for FE_ORDER=$(FE_ORDER) FREQ_SHIFT=$(FREQ_SHIFT)"
+        cd $(omega3p-solve.workspace)
+        grep "Frequency:" *.out | awk '{print $2}' > $(WORKSPACE)/frequencies.txt
+        echo "$(FE_ORDER) $(FREQ_SHIFT) $(cat $(WORKSPACE)/frequencies.txt | head -1)" \
+          > $(WORKSPACE)/result.csv
+        echo "Result: $(cat $(WORKSPACE)/result.csv)"
+      depends: [omega3p-solve]
+
+  - name: aggregate
+    description: Collect all sweep results into convergence table
+    run:
+      cmd: |
+        echo "=== Omega3P Parameter Sweep Results ===" > $(WORKSPACE)/convergence.csv
+        echo "FE_ORDER FREQ_SHIFT COMPUTED_FREQ" >> $(WORKSPACE)/convergence.csv
+        for f in $(extract-results.workspace)/*/result.csv; do
+          if [ -f "$f" ]; then
+            cat "$f" >> $(WORKSPACE)/convergence.csv
+          fi
+        done
+        echo ""
+        echo "Convergence table:"
+        column -t $(WORKSPACE)/convergence.csv
+      depends: [extract-results_*]

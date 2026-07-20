@@ -1,0 +1,93 @@
+description:
+  name: fault-tolerance
+  description: |
+    Demonstrates Merlin fault tolerance features:
+    - $(MERLIN_RETRY): automatic retry on transient failures
+    - $(MERLIN_RESTART): checkpoint/restart for long-running tasks
+    - $(MERLIN_HARD_FAIL): abort on unrecoverable errors
+    Injects synthetic failures to show recovery behavior.
+
+env:
+  variables:
+    FAIL_RATE: 30
+
+batch:
+  type: slurm
+  bank: rfar
+
+merlin:
+  resources:
+    workers:
+      compute_workers:
+        args: --concurrency 4 --prefetch-multiplier 1 -O fair
+        steps: [unreliable-task, checkpoint-task]
+
+global.parameters:
+  TASK_ID:
+    values: [1, 2, 3, 4, 5, 6, 7, 8]
+    label: TASK_ID.%%
+
+study:
+  - name: unreliable-task
+    description: Task that randomly fails (demonstrates retry)
+    run:
+      cmd: |
+        echo "Running task $(TASK_ID), attempt at $(date)"
+        RAND=$((RANDOM % 100))
+        if [ $RAND -lt $(FAIL_RATE) ]; then
+          echo "TRANSIENT FAILURE (random=$RAND < $(FAIL_RATE))"
+          exit $(MERLIN_RETRY)
+        fi
+        echo "SUCCESS: task $(TASK_ID) completed (random=$RAND)"
+        echo "$(TASK_ID) success $(date)" > $(WORKSPACE)/result.txt
+      task_queue: compute_workers
+      retry_delay: 5
+      max_retries: 3
+
+  - name: checkpoint-task
+    description: Long task with checkpoint/restart capability
+    run:
+      cmd: |
+        CHECKPOINT=$(WORKSPACE)/checkpoint.txt
+        if [ -f "$CHECKPOINT" ]; then
+          STEP=$(cat $CHECKPOINT)
+          echo "Resuming from checkpoint step $STEP"
+        else
+          STEP=0
+          echo "Starting fresh"
+        fi
+        for i in $(seq $((STEP + 1)) 5); do
+          echo "Processing step $i/5 for task $(TASK_ID)"
+          sleep 1
+          echo $i > $CHECKPOINT
+          # Simulate occasional crash at step 3
+          if [ $i -eq 3 ] && [ $((RANDOM % 100)) -lt 20 ]; then
+            echo "CRASH at step 3 - will restart from checkpoint"
+            exit $(MERLIN_RESTART)
+          fi
+        done
+        echo "$(TASK_ID) completed all 5 steps" > $(WORKSPACE)/result.txt
+        rm -f $CHECKPOINT
+      restart: |
+        echo "Restarting task $(TASK_ID) from checkpoint"
+      task_queue: compute_workers
+      retry_delay: 3
+      max_retries: 5
+      depends: [unreliable-task]
+
+  - name: report
+    description: Summarize fault tolerance results
+    run:
+      cmd: |
+        echo "=== Fault Tolerance Report ==="
+        echo ""
+        echo "Unreliable tasks completed:"
+        for f in $(unreliable-task.workspace)/TASK_ID.*/result.txt; do
+          [ -f "$f" ] && cat "$f"
+        done
+        echo ""
+        echo "Checkpoint tasks completed:"
+        for f in $(checkpoint-task.workspace)/TASK_ID.*/result.txt; do
+          [ -f "$f" ] && cat "$f"
+        done
+      depends: [checkpoint-task_*]

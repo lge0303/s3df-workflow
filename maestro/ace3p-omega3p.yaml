@@ -1,0 +1,65 @@
+description:
+  name: ace3p-omega3p-pipeline
+  description: |
+    Complete Omega3P eigenmode simulation pipeline on S3DF.
+    Steps: mesh-convert → omega3p-solve → postprocess
+    Demonstrates DAG dependencies and Slurm integration.
+
+env:
+  variables:
+    ACE3P_BIN: /sdf/group/rfar/lge/sdf/ace3p/build/bin
+    MESH_FILE: pillbox4.gen
+    INPUT_FILE: pillbox.omega3p
+    RFPOST_FILE: pillbox.rfpost
+    DATA_DIR: $(SPECROOT)/data
+
+batch:
+  type: slurm
+  host: s3df
+  bank: rfar
+
+study:
+  - name: mesh-convert
+    description: Convert Genesis (.gen) mesh to ACE3P NetCDF (.ncdf) format
+    run:
+      cmd: |
+        echo "Converting mesh: $(DATA_DIR)/$(MESH_FILE)"
+        cp $(DATA_DIR)/$(MESH_FILE) $(WORKSPACE)/
+        cd $(WORKSPACE)
+        $(LAUNCHER) $(ACE3P_BIN)/acdtool meshconvert $(MESH_FILE)
+        echo "Mesh conversion complete"
+        ls -la *.ncdf
+      nodes: 1
+      procs: 1
+      walltime: "00:10:00"
+
+  - name: omega3p-solve
+    description: Run Omega3P eigenmode solver
+    run:
+      cmd: |
+        echo "Running Omega3P eigenmode solver"
+        cp $(DATA_DIR)/$(INPUT_FILE) $(WORKSPACE)/
+        ln -sf $(mesh-convert.workspace)/*.ncdf $(WORKSPACE)/
+        cd $(WORKSPACE)
+        $(LAUNCHER) $(ACE3P_BIN)/omega3p $(INPUT_FILE)
+        echo "Solver complete"
+        grep -A2 "Eigenvalue:" *.out || echo "Check output files for results"
+      depends: [mesh-convert]
+      nodes: 1
+      procs: 128
+      walltime: "00:30:00"
+
+  - name: postprocess
+    description: Extract RF parameters (R/Q, Q-factor) from mode fields
+    run:
+      cmd: |
+        echo "Running post-processing"
+        cp $(DATA_DIR)/$(RFPOST_FILE) $(WORKSPACE)/
+        ln -sf $(omega3p-solve.workspace)/omega3p_results $(WORKSPACE)/
+        cd $(WORKSPACE)
+        $(LAUNCHER) $(ACE3P_BIN)/acdtool postprocess rf $(RFPOST_FILE)
+        echo "Post-processing complete"
+      depends: [omega3p-solve]
+      nodes: 1
+      procs: 1
+      walltime: "00:10:00"
