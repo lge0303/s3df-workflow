@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Conda
+.conda/
+
+# Environment
+.env
+*.env
+
+# Redis
+dump.rdb
+
+# AiiDA
+.aiida/
+
+# Maestro output
+*_<timestamp>/
+
+# Merlin output
+merlin_info/
+*.out
+*.err
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (for dashboard integration)
+node_modules/
+.next/
+
+# Large files
+*.ncdf
+*.gen
+*.sat
+*.mod
