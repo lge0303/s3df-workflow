@@ -27,7 +27,7 @@ verdi computer configure core.local s3df --non-interactive
 # Register ACE3P codes
 echo "3. Registering ACE3P codes..."
 
-ACE3P_BIN=/sdf/group/rfar/lge/sdf/ace3p/build/bin
+ACE3P_BIN=/sdf/group/rfar/lge/sdf/ace3p/bin
 
 verdi code create core.code.installed \
   --label omega3p \

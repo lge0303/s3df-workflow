@@ -11,10 +11,10 @@ env:
 
 global.parameters:
   SIZE:
-    values: [10, 50, 100]
+    values: [10, 50, 100, 10, 50, 100]
     label: SIZE.%%
   METHOD:
-    values: [linear, quadratic]
+    values: [linear, linear, linear, quadratic, quadratic, quadratic]
     label: METHOD.%%
 
 study:
