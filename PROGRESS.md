@@ -2,7 +2,7 @@
 
 **Project:** Scientific Workflow Automation for S3DF  
 **Author:** Lixin Ge  
-**Last Updated:** 2026-07-20  
+**Last Updated:** 2026-07-28  
 **Work Plan:** [docs/workplan.md](docs/workplan.md)
 
 ---
@@ -41,12 +41,17 @@
   - Fixed: Maestro requires equal-length param arrays (column-wise zip, not cross-product)
   - Output: `maestro/examples/parameter-sweep_20260720-145517/`
 - [x] ACE3P workflow specs written (omega3p, track3p, multi-solver)
+- [x] **Real ACE3P Omega3P on S3DF Slurm — PASSED (2026-07-28)**
+  - Submitted to `milano` partition with `rfar:regular` account, `qos=normal`
+  - 16 MPI procs, `srun --overlap --cpu-bind=none` per regression script patterns
+  - Mode 1: 1.3138129 GHz (matches reference exactly)
+  - Mode 2: 2.3291350 GHz (matches reference exactly)
+  - Output: `maestro/ace3p-omega3p-pipeline_20260728-112531/`
 
 ### Remaining
-- [ ] Test `ace3p-omega3p.yaml` with real ACE3P solvers on Slurm
 - [ ] Test `ace3p-multi-solver.yaml` (Omega3P → Track3P dependency chain)
-- [ ] Verify Slurm batch submission (not just local execution)
 - [ ] Document S3DF-specific Maestro usage guide
+- [ ] Add parameter sweep with real ACE3P (multiple FE orders or frequencies)
 
 ### Key Finding
 Maestro `global.parameters` does NOT do cross-product. All parameter arrays must be the same length — it zips them column-wise. To get a cross-product of N×M, enumerate all N*M pairs explicitly.
@@ -56,13 +61,17 @@ Maestro `global.parameters` does NOT do cross-product. All parameter arrays must
 ## Phase 3: Merlin — IN PROGRESS
 
 ### Completed
-- [x] Merlin config created (`~/.merlin/app.yaml` → local Redis)
+- [x] Merlin config created (`~/.merlin/app.yaml` → Redis with password)
 - [x] Redis server installed and tested on login node
 - [x] Simple sweep tested in `--local` mode (generate → 5 process → aggregate)
-  - Output: `merlin/examples/merlin_output/simple-sweep_20260720-150241/`
+- [x] Merlin workers launch via Slurm and connect to Redis broker (verified via Redis bindings)
+- [x] Updated Slurm config: `rfar:regular`, `milano` partition
+
+### Issue: Distributed Workers
+Workers connect to Redis (confirmed via `_kombu.binding` keys) but tasks don't produce output on compute nodes. Root cause likely: Celery app module import path or workspace resolution when running on remote node. `merlin run --local` works perfectly for all task logic.
 
 ### Remaining
-- [ ] Test with Slurm workers (`merlin run` + `merlin run-workers`)
+- [ ] Debug distributed worker task execution (compute node → Redis → output)
 - [ ] Test fault-tolerance.yaml (retry behavior demo)
 - [ ] Set up persistent Redis (Podman container or SPIN service)
 - [ ] Test large-scale sweep (100+ tasks across multiple Slurm allocations)
@@ -147,6 +156,9 @@ python generator.py --tool merlin "Large parameter sweep with 100 cavity geometr
 | No RabbitMQ on S3DF | AiiDA runs without broker (limited); Merlin uses Redis only | Acceptable for eval |
 | ACE3P binary path | Corrected to `/sdf/group/rfar/lge/sdf/ace3p/bin/` | Fixed |
 | Maestro cross-product | Enumerate all combinations explicitly in param arrays | Fixed |
+| Maestro ntasks missing | Need `procs: 1` in batch block + per-step `procs` for ntasks header | Fixed |
+| Merlin workers no output | Workers connect to Redis but don't write results; debugging needed | Open |
+| Slurm priority | Use `rfar:regular` account + `qos=normal` on `milano` (not default) | Fixed |
 
 ---
 
@@ -167,7 +179,29 @@ python generator.py --tool merlin "Large parameter sweep with 100 cavity geometr
 
 ---
 
+## S3DF Slurm Configuration
+
+```
+Partition: milano
+Account: rfar:regular
+QOS: normal (high priority, non-preemptable)
+srun flags: --overlap --cpu-bind=none
+Environment: source /sdf/group/rfar/lge/sdf/env.sh
+Reference: /sdf/group/rfar/lge/sdf/ace3p/regression/ace3ptest.py
+```
+
+---
+
 ## Session Log
+
+### 2026-07-28 (Session 3)
+- **MILESTONE: ACE3P Omega3P successfully run on S3DF Slurm via Maestro**
+  - PillboxLossless test: 16 MPI procs, eigenvalues match reference exactly
+  - Fixed: Maestro ntasks generation (needs procs in batch block)
+  - Fixed: Slurm account rfar:regular + qos=normal for priority
+  - Added srun --overlap --cpu-bind=none per regression script patterns
+- Merlin distributed workers: launch and connect but don't produce output (debugging needed)
+- Learned S3DF Slurm patterns from regression/ace3ptest.py
 
 ### 2026-07-20 (Session 2)
 - Tested Maestro parameter sweep (fixed YAML, all 6 combos passed)
