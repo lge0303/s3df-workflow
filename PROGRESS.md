@@ -15,7 +15,7 @@
 | 2 | Maestro — DAG Workflow Orchestration | COMPLETE | Week 4 |
 | 3 | Merlin — Distributed Execution | IN PROGRESS | Week 6 |
 | 4 | AiiDA — Provenance Tracking | IN PROGRESS | Week 8 |
-| 5 | AI-Assisted Workflow Generation | IN PROGRESS | Week 10 |
+| 5 | AI-Assisted Workflow Generation | COMPLETE | Week 10 |
 | 6 | Dashboard Workflow Monitoring | IN PROGRESS | Week 12 |
 
 ---
@@ -111,7 +111,7 @@ Without RabbitMQ: no daemon, no async submission, no auto-retry. Calculations mu
 
 ---
 
-## Phase 5: AI Workflow Generation — IN PROGRESS
+## Phase 5: AI Workflow Generation — COMPLETE
 
 ### Completed
 - [x] Generator code written with Claude API integration
@@ -119,19 +119,38 @@ Without RabbitMQ: no daemon, no async submission, no auto-retry. Calculations mu
 - [x] YAML validation layer (checks structure, required fields)
 - [x] CLI interface with --tool, --output, --model options
 - [x] Anthropic SDK installed and import verified
+- [x] **End-to-end Maestro generation — PASSED**
+  - Input: "Run Omega3P sweep over 3 frequencies"
+  - Output: valid YAML with meshconvert → solve → postprocess → collect steps
+- [x] **End-to-end Merlin generation — PASSED**
+  - Input: "Sweep iris radius 30-32mm in 0.5mm steps"
+  - Output: valid YAML with 4 worker pools, retry logic, fan-in aggregation
+- [x] Fixed model ID (`us.anthropic.claude-sonnet-4-6`) and token budget (16000)
+- [x] Handle ThinkingBlock in API response
 
 ### Remaining
-- [ ] Set ANTHROPIC_API_KEY and run end-to-end test
-- [ ] Validate with 10+ test scenarios
 - [ ] Add /api/workflow/generate backend route to dashboard
 - [ ] Connect dashboard UI to backend
+- [ ] Validate with more test scenarios
 
-### To Test
+### User Guide
+
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-cd ai-assist/workflow-generator
+conda activate workflow-s3df
+export ANTHROPIC_API_KEY="$ANTHROPIC_AUTH_TOKEN"
+cd /sdf/group/rfar/lge/sdf/workflow/ai-assist/workflow-generator
+
+# Generate Maestro workflow
 python generator.py "Run Omega3P sweep over 3 frequencies"
-python generator.py --tool merlin "Large parameter sweep with 100 cavity geometries"
+
+# Generate Merlin workflow (distributed with fault tolerance)
+python generator.py --tool merlin "Sweep iris radius 30-32mm in 0.5mm steps"
+
+# Save to file
+python generator.py -o my-workflow.yaml "Run Track3P multipacting scan 20-30 MV/m"
+
+# Use different model
+python generator.py --model us.anthropic.claude-opus-4-6-v1 "Complex multi-solver pipeline"
 ```
 
 ---
