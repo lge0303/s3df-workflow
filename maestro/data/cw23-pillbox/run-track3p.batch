@@ -1,0 +1,16 @@
+#!/bin/bash -l
+#SBATCH -C cpu
+#SBATCH -q debug
+#SBATCH -A m349
+#SBATCH -N 1
+#SBATCH -t 00:10:00
+#SBATCH -J myjob
+#SBATCH -e ace3p.e%j
+#SBATCH -o ace3p.o%j
+
+export DIR=$PWD
+
+###source /global/cfs/cdirs/ace3p/perlmutter/CPU/perlmutter-ace3p.sh
+ 
+cd $DIR
+srun -n 16 -c 16 --cpu-bind=cores /global/cfs/cdirs/ace3p/perlmutter/CPU/track3p Pillbox.track3p

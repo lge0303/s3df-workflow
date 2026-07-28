@@ -2,14 +2,15 @@ description:
   name: ace3p-multi-solver
   description: |
     Multi-solver DAG: Omega3P → Track3P on S3DF.
-    Step 1: Omega3P computes eigenmode fields for a 10-degree pillbox slice.
-    Step 2: Track3P uses those fields for multipacting particle simulation.
-    Demonstrates cross-solver dependency in Maestro DAG.
+    Based on CW23 Pillbox multipacting example.
+    Step 1: Omega3P computes eigenmode fields.
+    Step 2: Track3P uses mode fields for multipacting simulation.
+    Step 3: Summary of results.
 
 env:
   variables:
     ACE3P_BIN: /sdf/group/rfar/lge/sdf/ace3p/bin
-    DATA_DIR: $(SPECROOT)/data
+    DATA_DIR: $(SPECROOT)/data/cw23-pillbox
     ENV_SETUP: source /sdf/group/rfar/lge/sdf/env.sh
 
 batch:
@@ -26,14 +27,15 @@ study:
     run:
       cmd: |
         $(ENV_SETUP)
-        echo "=== Step 1: Omega3P Eigenmode Solve ==="
-        cp $(DATA_DIR)/PillboxLosslessTenDSlice.ncdf $(WORKSPACE)/
-        cp $(DATA_DIR)/PillboxLosslessTenDSlice.omega3p $(WORKSPACE)/
+        echo "=== Step 1: Omega3P Eigenmode Solve (CW23 Pillbox) ==="
+        cp $(DATA_DIR)/Pillbox.ncdf $(WORKSPACE)/
+        cp $(DATA_DIR)/Pillbox.omega3p $(WORKSPACE)/
         cd $(WORKSPACE)
-        srun --overlap --cpu-bind=none $(ACE3P_BIN)/omega3p PillboxLosslessTenDSlice.omega3p
+        srun --overlap --cpu-bind=none -n 16 $(ACE3P_BIN)/omega3p Pillbox.omega3p
         echo "=== Omega3P Complete ==="
-        echo "Mode files generated:"
-        ls omega3p_results/*.mod 2>/dev/null || true
+        echo "Mode files:"
+        ls omega3p_results/*.mod 2>/dev/null
+        grep "Frequency" omega3p_results/omega3p.out 2>/dev/null | grep -v "Shift" || true
       nodes: 1
       procs: 16
       walltime: "00:10:00"
@@ -43,21 +45,21 @@ study:
     run:
       cmd: |
         $(ENV_SETUP)
-        echo "=== Step 2: Track3P Multipacting ==="
-        cp $(DATA_DIR)/PillboxLosslessTenDSlice.ncdf $(WORKSPACE)/
-        cp $(DATA_DIR)/PillboxLosslessTenDSlice.track3p $(WORKSPACE)/
+        echo "=== Step 2: Track3P Multipacting (CW23 Pillbox) ==="
+        cp $(DATA_DIR)/Pillbox.ncdf $(WORKSPACE)/
+        cp $(DATA_DIR)/Pillbox.track3p $(WORKSPACE)/
+        cp $(DATA_DIR)/copper.dat $(WORKSPACE)/
         ln -sf $(omega3p-solve.workspace)/omega3p_results $(WORKSPACE)/omega3p_results
         cd $(WORKSPACE)
-        echo "omega3p_results linked from: $(omega3p-solve.workspace)/omega3p_results"
-        ls omega3p_results/*.mod 2>/dev/null
-        srun --overlap --cpu-bind=none -n 8 $(ACE3P_BIN)/track3p PillboxLosslessTenDSlice.track3p
+        echo "Mode files linked:"
+        ls omega3p_results/*.mod
+        echo "Starting Track3P (field scan 23-25 MV/m, hybrid MPI+OpenMP)..."
+        export OMP_NUM_THREADS=16
+        srun --overlap --cpu-bind=none -n 1 -c 16 $(ACE3P_BIN)/track3p Pillbox.track3p
         echo "=== Track3P Complete ==="
-        if [ -f OUTPUT/resonantparticles ]; then
-          echo "Resonant particles found:"
-          head -5 OUTPUT/resonantparticles
-        else
+        if [ -d OUTPUT ]; then
           echo "Output files:"
-          ls OUTPUT/ 2>/dev/null || true
+          ls OUTPUT/
         fi
       depends: [omega3p-solve]
       nodes: 1
@@ -68,22 +70,35 @@ study:
     description: Summarize multi-solver pipeline results
     run:
       cmd: |
-        echo "=== Multi-Solver Pipeline Summary ==="
+        echo "=============================================="
+        echo "  Multi-Solver Pipeline: Omega3P → Track3P"
+        echo "  CW23 Pillbox Multipacting Example"
+        echo "=============================================="
         echo ""
-        echo "Step 1 - Omega3P Eigenmode:"
-        O3P_OUT=$(omega3p-solve.workspace)
-        grep "Frequency:" "$O3P_OUT"/omega3p_results/omega3p.out 2>/dev/null || true
+        echo "Step 1 - Omega3P Eigenmode Results:"
+        grep "Frequency:" $(omega3p-solve.workspace)/omega3p_results/omega3p.out 2>/dev/null || true
+        grep "QualityFactor" $(omega3p-solve.workspace)/omega3p_results/omega3p.out 2>/dev/null || true
         echo ""
-        echo "Step 2 - Track3P Multipacting:"
-        T3P_OUT=$(track3p-solve.workspace)
-        if [ -f "$T3P_OUT/OUTPUT/resonantparticles" ]; then
-          NLINES=$(wc -l < "$T3P_OUT/OUTPUT/resonantparticles")
-          echo "Resonant particles: $NLINES entries (multipacting detected)"
-          echo "Field levels:"
-          awk 'NR>1{print $1}' "$T3P_OUT/OUTPUT/resonantparticles" | sort -u
+        echo "Step 2 - Track3P Multipacting Results:"
+        T3P=$(track3p-solve.workspace)
+        RESFILE="$T3P/track3p_results/OUTPUT/resonantparticles"
+        ECFILE="$T3P/track3p_results/OUTPUT/enhancementCounter"
+        if [ -f "$RESFILE" ]; then
+          NLINES=$(wc -l < "$RESFILE")
+          echo "  Resonant particles: $NLINES entries"
+          echo "  Field levels scanned:"
+          awk 'NR>1{print "    " $1 " V/m"}' "$RESFILE" | sort -u
+          echo ""
+          echo "  First 5 entries:"
+          head -6 "$RESFILE"
         else
-          echo "No resonant particles file"
-          ls "$T3P_OUT"/OUTPUT/ 2>/dev/null || ls "$T3P_OUT"/*.out 2>/dev/null | head -3
+          echo "  No resonant particles file found"
+          ls "$T3P/track3p_results/OUTPUT/" 2>/dev/null || echo "  No OUTPUT directory"
+        fi
+        if [ -f "$ECFILE" ]; then
+          echo ""
+          echo "  Enhancement counter (multipacting susceptibility):"
+          head -5 "$ECFILE"
         fi
         echo ""
         echo "=== Pipeline Complete ==="
