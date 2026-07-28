@@ -1,85 +1,93 @@
 description:
   name: ace3p-multi-solver
   description: |
-    Multi-solver DAG: Omega3P eigenmode → Track3P particle tracking.
-    Demonstrates cross-solver dependencies where Track3P uses
-    mode fields computed by Omega3P as input for multipacting analysis.
+    Multi-solver DAG: Omega3P → Track3P on S3DF.
+    Step 1: Omega3P computes eigenmode fields for a 10-degree pillbox slice.
+    Step 2: Track3P uses those fields for multipacting particle simulation.
+    Demonstrates cross-solver dependency in Maestro DAG.
 
 env:
   variables:
-    ACE3P_BIN: /sdf/group/rfar/lge/sdf/ace3p/build/bin
+    ACE3P_BIN: /sdf/group/rfar/lge/sdf/ace3p/bin
     DATA_DIR: $(SPECROOT)/data
-    MESH_FILE: pillbox4.ncdf
+    ENV_SETUP: source /sdf/group/rfar/lge/sdf/env.sh
 
 batch:
   type: slurm
   host: s3df
-  bank: rfar
+  bank: rfar:regular
+  queue: milano
+  qos: normal
+  procs: 1
 
 study:
   - name: omega3p-solve
     description: Compute eigenmode fields (required by Track3P)
     run:
       cmd: |
-        echo "Step 1: Computing eigenmodes with Omega3P"
-        cp $(DATA_DIR)/pillbox.omega3p $(WORKSPACE)/
-        ln -sf $(DATA_DIR)/$(MESH_FILE) $(WORKSPACE)/
+        $(ENV_SETUP)
+        echo "=== Step 1: Omega3P Eigenmode Solve ==="
+        cp $(DATA_DIR)/PillboxLosslessTenDSlice.ncdf $(WORKSPACE)/
+        cp $(DATA_DIR)/PillboxLosslessTenDSlice.omega3p $(WORKSPACE)/
         cd $(WORKSPACE)
-        $(LAUNCHER) $(ACE3P_BIN)/omega3p pillbox.omega3p
-        echo "Eigenmode computation complete"
-        ls omega3p_results/
+        srun --overlap --cpu-bind=none $(ACE3P_BIN)/omega3p PillboxLosslessTenDSlice.omega3p
+        echo "=== Omega3P Complete ==="
+        echo "Mode files generated:"
+        ls omega3p_results/*.mod 2>/dev/null || true
       nodes: 1
-      procs: 128
-      walltime: "00:30:00"
-
-  - name: omega3p-postprocess
-    description: Extract RF parameters from eigenmodes
-    run:
-      cmd: |
-        echo "Step 2a: Post-processing eigenmodes"
-        cp $(DATA_DIR)/pillbox.rfpost $(WORKSPACE)/
-        ln -sf $(omega3p-solve.workspace)/omega3p_results $(WORKSPACE)/
-        cd $(WORKSPACE)
-        $(LAUNCHER) $(ACE3P_BIN)/acdtool postprocess rf pillbox.rfpost
-        echo "RF post-processing complete"
-      depends: [omega3p-solve]
-      nodes: 1
-      procs: 1
+      procs: 16
       walltime: "00:10:00"
 
   - name: track3p-solve
-    description: Run multipacting simulation using Omega3P mode fields
+    description: Multipacting simulation using Omega3P mode fields
     run:
       cmd: |
-        echo "Step 2b: Running Track3P multipacting analysis"
-        cp $(DATA_DIR)/pillbox.track3p $(WORKSPACE)/
-        ln -sf $(DATA_DIR)/$(MESH_FILE) $(WORKSPACE)/
-        ln -sf $(omega3p-solve.workspace)/omega3p_results $(WORKSPACE)/
+        $(ENV_SETUP)
+        echo "=== Step 2: Track3P Multipacting ==="
+        cp $(DATA_DIR)/PillboxLosslessTenDSlice.ncdf $(WORKSPACE)/
+        cp $(DATA_DIR)/PillboxLosslessTenDSlice.track3p $(WORKSPACE)/
+        ln -sf $(omega3p-solve.workspace)/omega3p_results $(WORKSPACE)/omega3p_results
         cd $(WORKSPACE)
-        $(LAUNCHER) $(ACE3P_BIN)/track3p pillbox.track3p
-        echo "Track3P simulation complete"
+        echo "omega3p_results linked from: $(omega3p-solve.workspace)/omega3p_results"
+        ls omega3p_results/*.mod 2>/dev/null
+        srun --overlap --cpu-bind=none -n 8 $(ACE3P_BIN)/track3p PillboxLosslessTenDSlice.track3p
+        echo "=== Track3P Complete ==="
+        if [ -f OUTPUT/resonantparticles ]; then
+          echo "Resonant particles found:"
+          head -5 OUTPUT/resonantparticles
+        else
+          echo "Output files:"
+          ls OUTPUT/ 2>/dev/null || true
+        fi
       depends: [omega3p-solve]
       nodes: 1
-      procs: 128
-      walltime: "01:00:00"
+      procs: 16
+      walltime: "00:20:00"
 
-  - name: track3p-analysis
-    description: Analyze multipacting impacts and trajectories
+  - name: summary
+    description: Summarize multi-solver pipeline results
     run:
       cmd: |
-        echo "Step 3: Analyzing Track3P results"
-        cd $(track3p-solve.workspace)
-        echo "Impact statistics:" > $(WORKSPACE)/analysis.txt
-        if [ -d track3p_results ]; then
-          ls track3p_results/ >> $(WORKSPACE)/analysis.txt
-          echo "Track3P results found"
+        echo "=== Multi-Solver Pipeline Summary ==="
+        echo ""
+        echo "Step 1 - Omega3P Eigenmode:"
+        O3P_OUT=$(omega3p-solve.workspace)
+        grep "Frequency:" "$O3P_OUT"/omega3p_results/omega3p.out 2>/dev/null || true
+        echo ""
+        echo "Step 2 - Track3P Multipacting:"
+        T3P_OUT=$(track3p-solve.workspace)
+        if [ -f "$T3P_OUT/OUTPUT/resonantparticles" ]; then
+          NLINES=$(wc -l < "$T3P_OUT/OUTPUT/resonantparticles")
+          echo "Resonant particles: $NLINES entries (multipacting detected)"
+          echo "Field levels:"
+          awk 'NR>1{print $1}' "$T3P_OUT/OUTPUT/resonantparticles" | sort -u
         else
-          echo "No track3p_results directory found" >> $(WORKSPACE)/analysis.txt
+          echo "No resonant particles file"
+          ls "$T3P_OUT"/OUTPUT/ 2>/dev/null || ls "$T3P_OUT"/*.out 2>/dev/null | head -3
         fi
         echo ""
-        echo "=== Multi-Solver Pipeline Complete ==="
-        echo "Omega3P results: $(omega3p-solve.workspace)/omega3p_results/"
-        echo "RF parameters: $(omega3p-postprocess.workspace)/"
-        echo "Track3P results: $(track3p-solve.workspace)/track3p_results/"
-        echo "Analysis: $(WORKSPACE)/analysis.txt"
+        echo "=== Pipeline Complete ==="
       depends: [track3p-solve]
+      nodes: 1
+      procs: 1
+      walltime: "00:05:00"
