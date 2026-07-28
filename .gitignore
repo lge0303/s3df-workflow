@@ -19,12 +19,15 @@ dump.rdb
 # AiiDA
 .aiida/
 
-# Maestro output
-*_<timestamp>/
+# Maestro output (timestamped run directories)
+maestro/**/*_2026*/
 maestro/examples/output/
 maestro/examples/sweep-output/
 
-# Merlin output
+# Merlin output (timestamped run directories)
+merlin/examples/merlin_output/
+
+# Merlin info
 merlin_info/
 
 # Pip/tmp cache

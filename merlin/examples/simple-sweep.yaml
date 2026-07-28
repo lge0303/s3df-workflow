@@ -12,7 +12,8 @@ env:
 
 batch:
   type: slurm
-  bank: rfar
+  bank: rfar:regular
+  queue: milano
 
 merlin:
   resources:
