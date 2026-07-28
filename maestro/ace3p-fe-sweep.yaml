@@ -1,0 +1,90 @@
+description:
+  name: ace3p-fe-convergence
+  description: |
+    Finite element order convergence study for Omega3P.
+    Sweeps FE orders 1, 2, 3 on PillboxLossless cavity.
+    Demonstrates Maestro parameter sweep with real ACE3P solvers on S3DF.
+
+env:
+  variables:
+    ACE3P_BIN: /sdf/group/rfar/lge/sdf/ace3p/bin
+    MESH_FILE: PillboxLossless.ncdf
+    DATA_DIR: $(SPECROOT)/data
+    ENV_SETUP: source /sdf/group/rfar/lge/sdf/env.sh
+
+batch:
+  type: slurm
+  host: s3df
+  bank: rfar:regular
+  queue: milano
+  qos: normal
+  procs: 1
+
+global.parameters:
+  FE_ORDER:
+    values: [1, 2, 3]
+    label: FE_ORDER.%%
+
+study:
+  - name: solve
+    description: Run Omega3P with FE order $(FE_ORDER)
+    run:
+      cmd: |
+        $(ENV_SETUP)
+        echo "=== Omega3P FE Order $(FE_ORDER) ==="
+        cp $(DATA_DIR)/$(MESH_FILE) $(WORKSPACE)/
+        cd $(WORKSPACE)
+        cat > PillboxLossless.omega3p << 'INPUTEOF'
+        ModelInfo : {
+          File: ./PillboxLossless.ncdf
+          BoundaryCondition : {
+            Magnetic: 1, 2
+            Exterior: 6
+          }
+          SurfaceMaterial : {
+            ReferenceNumber: 6
+            Sigma: 5.8e7
+          }
+        }
+        FiniteElement: {
+          Order: $(FE_ORDER)
+          CurvedSurfaces: on
+        }
+        EigenSolver : {
+          NumEigenvalues: 2
+          FrequencyShift: 1.0e9
+        }
+        INPUTEOF
+        srun --overlap --cpu-bind=none $(ACE3P_BIN)/omega3p PillboxLossless.omega3p
+        echo "=== Results ==="
+        grep "Frequency:" omega3p.out 2>/dev/null || true
+        grep "QualityFactor:" omega3p.out 2>/dev/null || true
+      nodes: 1
+      procs: 16
+      walltime: "00:10:00"
+
+  - name: compare
+    description: Aggregate convergence results across FE orders
+    run:
+      cmd: |
+        echo "=== FE Order Convergence Study ==="
+        echo "FE_Order  Mode1_Freq(Hz)       Mode2_Freq(Hz)       DOFs" > $(WORKSPACE)/convergence.txt
+        echo "--------  ------------------   ------------------   ------" >> $(WORKSPACE)/convergence.txt
+        for d in $(solve.workspace)/FE_ORDER.*/; do
+          ORDER=$(basename "$d" | sed 's/FE_ORDER.//')
+          OUTFILE=$(ls "$d"/*.out 2>/dev/null | head -1)
+          if [ -n "$OUTFILE" ]; then
+            FREQ1=$(grep "Frequency:" "$OUTFILE" | grep -v "= " | head -1 | awk '{print $2}')
+            FREQ2=$(grep "Frequency:" "$OUTFILE" | grep -v "= " | tail -1 | awk '{print $2}')
+            DOFS=$(grep "Total Number of DOFs:" "$OUTFILE" | awk '{print $NF}')
+            echo "$ORDER         $FREQ1   $FREQ2   $DOFS" >> $(WORKSPACE)/convergence.txt
+          fi
+        done
+        echo ""
+        cat $(WORKSPACE)/convergence.txt
+        echo ""
+        echo "Reference: 1.3138129364e9 Hz (analytical TM010 pillbox mode)"
+      depends: [solve_*]
+      nodes: 1
+      procs: 1
+      walltime: "00:05:00"
