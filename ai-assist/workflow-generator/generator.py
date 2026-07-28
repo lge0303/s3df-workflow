@@ -198,7 +198,7 @@ study:
 """
 
 
-def generate_workflow(description: str, tool: str = "maestro", model: str = "claude-sonnet-4-6-20250514") -> str:
+def generate_workflow(description: str, tool: str = "maestro", model: str = "us.anthropic.claude-sonnet-4-6") -> str:
     """Generate a workflow YAML spec from natural language description."""
     client = Anthropic()
 
@@ -208,7 +208,7 @@ def generate_workflow(description: str, tool: str = "maestro", model: str = "cla
 
     response = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=16000,
         system=[
             {"type": "text", "text": SYSTEM_PROMPT + tool_context},
             {"type": "text", "text": EXAMPLES, "cache_control": {"type": "ephemeral"}},
@@ -218,7 +218,11 @@ def generate_workflow(description: str, tool: str = "maestro", model: str = "cla
         ],
     )
 
-    content = response.content[0].text
+    content = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            content = block.text
+            break
 
     # Extract YAML from markdown code blocks if present
     if "```yaml" in content:
@@ -264,7 +268,7 @@ Examples:
     parser.add_argument("--tool", choices=["maestro", "merlin"], default="maestro", help="Target workflow tool")
     parser.add_argument("--output", "-o", type=str, help="Output file (default: stdout)")
     parser.add_argument("--validate", action="store_true", default=True, help="Validate generated YAML")
-    parser.add_argument("--model", default="claude-sonnet-4-6-20250514", help="Claude model to use")
+    parser.add_argument("--model", default="us.anthropic.claude-sonnet-4-6", help="Claude model to use")
     args = parser.parse_args()
 
     print(f"Generating {args.tool} workflow for: {args.description}", file=sys.stderr)
