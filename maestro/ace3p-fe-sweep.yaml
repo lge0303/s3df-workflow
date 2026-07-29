@@ -88,3 +88,18 @@ study:
       nodes: 1
       procs: 1
       walltime: "00:05:00"
+
+  - name: plot
+    description: Generate convergence plots (PNG) for dashboard/reporting
+    run:
+      cmd: |
+        echo "=== Generating Plots ==="
+        python3 $(SPECROOT)/scripts/plot_convergence.py \
+          $(solve.workspace) \
+          $(WORKSPACE)/plots
+        echo "Plots saved to: $(WORKSPACE)/plots/"
+        ls $(WORKSPACE)/plots/
+      depends: [solve_*]
+      nodes: 1
+      procs: 1
+      walltime: "00:05:00"

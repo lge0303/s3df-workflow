@@ -106,3 +106,18 @@ study:
       nodes: 1
       procs: 1
       walltime: "00:05:00"
+
+  - name: plot
+    description: Generate multipacting analysis plots (PNG)
+    run:
+      cmd: |
+        echo "=== Generating Multipacting Plots ==="
+        python3 $(SPECROOT)/scripts/plot_multipacting.py \
+          $(track3p-solve.workspace) \
+          $(WORKSPACE)/plots
+        echo "Plots saved to: $(WORKSPACE)/plots/"
+        ls $(WORKSPACE)/plots/
+      depends: [track3p-solve]
+      nodes: 1
+      procs: 1
+      walltime: "00:05:00"
