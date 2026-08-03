@@ -91,15 +91,20 @@ python generator.py "Sweep gradient from 10 to 50 MV/m
 
 ---
 
-# Case Study 1: FE Order Convergence Sweep
+# What Have I Built?
 
-![Convergence](../figures/convergence.png)
+I've developed a prototype that demonstrates the concept end-to-end:
 
-3 parallel Slurm jobs on separate nodes. Mode 1 matches reference to 8 digits.
+1. A user describes their workflow in plain English
+2. The AI generates a complete, validated workflow specification
+3. The workflow submits to S3DF Slurm and runs autonomously
+4. Results and plots are generated automatically
+
+I've validated this with real ACE3P simulations.
 
 ---
 
-# Case Study 2: Multi-Solver DAG (Omega3P → Track3P)
+# Case Study: Multi-Solver DAG (Omega3P → Track3P)
 
 ![DAG](../figures/multi_solver_dag.png)
 
