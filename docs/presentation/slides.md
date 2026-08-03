@@ -51,7 +51,7 @@ Researchers manage multi-step simulations with ad-hoc scripts
 
 # System Architecture
 
-![Architecture](figures/architecture.png)
+![Architecture](../figures/architecture.png)
 
 User → AI Agent → Workflow Engine → Slurm → Results
 
@@ -93,7 +93,7 @@ python generator.py "Sweep gradient from 10 to 50 MV/m
 
 # Case Study 1: FE Order Convergence Sweep
 
-![Convergence](../maestro/ace3p-fe-convergence_20260728-120635/plots/convergence.png)
+![Convergence](../figures/convergence.png)
 
 3 parallel Slurm jobs on separate nodes. Mode 1 matches reference to 8 digits.
 
@@ -101,7 +101,7 @@ python generator.py "Sweep gradient from 10 to 50 MV/m
 
 # Case Study 2: Multi-Solver DAG (Omega3P → Track3P)
 
-![DAG](figures/multi_solver_dag.png)
+![DAG](../figures/multi_solver_dag.png)
 
 CW23 Pillbox: Omega3P (16 MPI) → Track3P (1 MPI × 16 OMP). Full pipeline ~5 min.
 
@@ -109,7 +109,7 @@ CW23 Pillbox: Omega3P (16 MPI) → Track3P (1 MPI × 16 OMP). Full pipeline ~5 m
 
 # Multipacting Results — Auto-Generated
 
-![Multipacting Map](../maestro/ace3p-multi-solver_20260728-133254/plots/multipacting_map.png)
+![Multipacting Map](../figures/multipacting_map.png)
 
 Impact energy vs. field level. Resonant particles at 23, 24, 25 MV/m.
 
@@ -117,7 +117,7 @@ Impact energy vs. field level. Resonant particles at 23, 24, 25 MV/m.
 
 # Enhancement Counter — Multipacting Susceptibility
 
-![Enhancement Counter](../maestro/ace3p-multi-solver_20260728-133254/plots/enhancement_counter.png)
+![Enhancement Counter](../figures/enhancement_counter.png)
 
 EC approaches 1.0 at 24–25 MV/m — onset of sustained multipacting.
 
