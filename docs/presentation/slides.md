@@ -174,6 +174,7 @@ EC approaches 1.0 at 24–25 MV/m — onset of sustained multipacting.
 # Next Steps
 
 **Near-term (August 2026):**
+- WORKS26 paper submission (deadline: Aug 7)
 - Deploy dashboard with live monitoring + results viewer
 - Integrate ParaView Web for 3D field visualization
 - Debug Merlin distributed workers for large campaigns
@@ -181,7 +182,6 @@ EC approaches 1.0 at 24–25 MV/m — onset of sustained multipacting.
 **Medium-term (September–October 2026):**
 - AiiDA provenance tracking for reproducibility
 - Additional workflow templates (S3P, TEM3P, gun3p)
-- WORKS26 paper submission
 
 **Long-term:**
 - Production deployment for S3DF users
