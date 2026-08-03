@@ -198,8 +198,18 @@ study:
 """
 
 
-def generate_workflow(description: str, tool: str = "maestro", model: str = "us.anthropic.claude-sonnet-4-6") -> str:
+def _detect_model() -> str:
+    """Auto-detect which model ID to use based on available credentials."""
+    import os
+    if os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        return "us.anthropic.claude-sonnet-4-6"
+    return "claude-sonnet-4-6-20250514"
+
+
+def generate_workflow(description: str, tool: str = "maestro", model: str = "") -> str:
     """Generate a workflow YAML spec from natural language description."""
+    if not model:
+        model = _detect_model()
     client = Anthropic()
 
     tool_context = ""
@@ -268,7 +278,7 @@ Examples:
     parser.add_argument("--tool", choices=["maestro", "merlin"], default="maestro", help="Target workflow tool")
     parser.add_argument("--output", "-o", type=str, help="Output file (default: stdout)")
     parser.add_argument("--validate", action="store_true", default=True, help="Validate generated YAML")
-    parser.add_argument("--model", default="us.anthropic.claude-sonnet-4-6", help="Claude model to use")
+    parser.add_argument("--model", default="", help="Claude model to use (auto-detects if not specified)")
     args = parser.parse_args()
 
     print(f"Generating {args.tool} workflow for: {args.description}", file=sys.stderr)
