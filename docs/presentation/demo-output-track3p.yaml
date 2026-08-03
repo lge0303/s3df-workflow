@@ -1,0 +1,196 @@
+description:
+  name: track3p-multipacting-onset
+  description: >
+    Gradient sweep from 10 to 50 MV/m using Track3P to identify
+    multipacting onset threshold via electron impact growth analysis.
+
+env:
+  variables:
+    ACE3P_BIN: /sdf/group/rfar/lge/sdf/ace3p/build/bin
+    MESH_GEN:  $(SPECROOT)/mesh/cavity.gen
+    MESH_NCDF: cavity.ncdf
+    OMEGA_OUT: $(SPECROOT)/omega3p_results
+    TRACK_TMPL: $(SPECROOT)/templates/cavity.track3p
+    # Seed electrons per surface patch — increase for statistics
+    NUM_PARTICLES: 5000
+
+batch:
+  type: slurm
+  host: s3df
+  bank: rfar
+
+# ---------------------------------------------------------------------------
+# Gradient sweep: 10 → 50 MV/m in 5 MV/m steps (SI units for Track3P input)
+# ---------------------------------------------------------------------------
+global.parameters:
+  GRADIENT_MVM:
+    values: [10, 15, 20, 25, 30, 35, 40, 45, 50]
+    label: GRAD.%%
+  GRADIENT_SI:
+    values: [1.0e7, 1.5e7, 2.0e7, 2.5e7, 3.0e7, 3.5e7, 4.0e7, 4.5e7, 5.0e7]
+    label: GRADSI.%%
+
+study:
+
+  # -------------------------------------------------------------------------
+  # Step 1 — Convert mesh once (no parameter expansion)
+  # -------------------------------------------------------------------------
+  - name: meshconvert
+    description: Convert Exodus II mesh to NetCDF format required by ACE3P solvers
+    run:
+      cmd: |
+        cd $(WORKSPACE)
+        cp $(MESH_GEN) .
+        $(ACE3P_BIN)/acdtool meshconvert $(basename $(MESH_GEN)) $(MESH_NCDF)
+        # Verify output exists before proceeding
+        if [ ! -f $(MESH_NCDF) ]; then
+          echo "ERROR: mesh conversion failed — $(MESH_NCDF) not produced" >&2
+          exit 1
+        fi
+        echo "Mesh conversion complete: $(MESH_NCDF)"
+      nodes: 1
+      procs: 1
+      walltime: "00:15:00"
+
+  # -------------------------------------------------------------------------
+  # Step 2 — Run Track3P at each gradient level (fan-out)
+  # -------------------------------------------------------------------------
+  - name: track
+    description: >
+      Particle tracking at $(GRADIENT_MVM) MV/m; seed electrons on all
+      RF-exposed surfaces and record impact coordinates and energies.
+    run:
+      cmd: |
+        cd $(WORKSPACE)
+
+        # Stage mesh and eigenmode fields
+        ln -sf $(meshconvert.workspace)/$(MESH_NCDF) .
+        ln -sf $(OMEGA_OUT)                          omega3p_results
+
+        # Stamp gradient into Track3P input (replaces @GRADIENT@ placeholder)
+        sed "s/@GRADIENT@/$(GRADIENT_SI)/g; \
+             s/@NUM_PARTICLES@/$(NUM_PARTICLES)/g; \
+             s/@MESH@/$(MESH_NCDF)/g" \
+            $(TRACK_TMPL) > run.track3p
+
+        echo "=== Starting Track3P at $(GRADIENT_MVM) MV/m ==="
+        $(LAUNCHER) $(ACE3P_BIN)/track3p run.track3p
+
+        # Basic sanity check — Track3P should produce an impact file
+        if ! ls *.track3p.out 2>/dev/null | grep -q .; then
+          echo "WARNING: no *.track3p.out found — job may have failed" >&2
+          exit 1
+        fi
+      depends: [meshconvert]
+      nodes: 2
+      procs: 256      # track3p scales well; adjust to queue availability
+      walltime: "02:00:00"
+
+  # -------------------------------------------------------------------------
+  # Step 3 — Post-process RF fields for each gradient point (optional visual)
+  # -------------------------------------------------------------------------
+  - name: postprocess
+    description: >
+      Run acdtool postprocess rf to generate field visualisation data
+      at $(GRADIENT_MVM) MV/m for ParaView / VisIt inspection.
+    run:
+      cmd: |
+        cd $(WORKSPACE)
+        ln -sf $(track.workspace)/$(MESH_NCDF)      .
+        ln -sf $(track.workspace)/omega3p_results   .
+
+        # Locate the rfpost input template (one per gradient if field varies)
+        sed "s/@GRADIENT@/$(GRADIENT_SI)/g" \
+            $(SPECROOT)/templates/cavity.rfpost > run.rfpost
+
+        $(ACE3P_BIN)/acdtool postprocess rf run.rfpost || \
+          echo "WARNING: postprocess returned non-zero; continuing analysis"
+      depends: [track]
+      nodes: 1
+      procs: 32
+      walltime: "00:20:00"
+
+  # -------------------------------------------------------------------------
+  # Step 4 — Aggregate results and locate multipacting onset (fan-in)
+  # -------------------------------------------------------------------------
+  - name: analyze
+    description: >
+      Collect impact counts and secondary-electron growth factors across all
+      gradient steps; flag the onset gradient and emit a summary table.
+    run:
+      cmd: |
+        cd $(WORKSPACE)
+
+        SUMMARY="multipacting_summary.txt"
+        printf "%-12s %-15s %-15s %-10s\n" \
+               "Gradient_MVm" "Total_Impacts" "Growth_Factor" "Onset?" \
+               > ${SUMMARY}
+        printf "%-12s %-15s %-15s %-10s\n" \
+               "------------" "-------------" "-------------" "------" \
+               >> ${SUMMARY}
+
+        ONSET_FOUND=0
+        ONSET_GRAD="none"
+
+        # Iterate over every expanded track workspace in gradient order
+        for d in $(ls -d $(STUDY_ROOT)/track/GRAD.*/); do
+          GRAD_LABEL=$(basename ${d})
+          # Re-derive MV/m value from directory label (e.g. GRAD.10 → 10)
+          GRAD_MVM=$(echo ${GRAD_LABEL} | sed 's/GRAD\.//')
+
+          # ---- parse Track3P output ----------------------------------------
+          OUTFILE=$(ls ${d}/*.track3p.out 2>/dev/null | head -1)
+          if [ -z "${OUTFILE}" ]; then
+            printf "%-12s %-15s %-15s %-10s\n" \
+                   "${GRAD_MVM}" "N/A" "N/A" "ERROR" >> ${SUMMARY}
+            continue
+          fi
+
+          # Total impact count (adjust grep pattern to actual Track3P output)
+          IMPACTS=$(grep -i "total.*impact\|number.*impact" "${OUTFILE}" \
+                    | tail -1 | awk '{print $NF}')
+          IMPACTS=${IMPACTS:-0}
+
+          # Secondary-electron growth factor (>1 ⟹ multipacting)
+          GROWTH=$(grep -i "growth.*factor\|enhancement.*factor" "${OUTFILE}" \
+                   | tail -1 | awk '{print $NF}')
+          GROWTH=${GROWTH:-"N/A"}
+
+          # Onset criterion: growth factor > 1.0 (adjust threshold as needed)
+          FLAG="no"
+          if [ "${GROWTH}" != "N/A" ]; then
+            EXCEEDS=$(awk "BEGIN{print (${GROWTH}+0 > 1.0) ? 1 : 0}")
+            if [ "${EXCEEDS}" -eq 1 ] && [ "${ONSET_FOUND}" -eq 0 ]; then
+              FLAG="*** ONSET ***"
+              ONSET_FOUND=1
+              ONSET_GRAD="${GRAD_MVM}"
+            elif [ "${EXCEEDS}" -eq 1 ]; then
+              FLAG="yes"
+            fi
+          fi
+
+          printf "%-12s %-15s %-15s %-10s\n" \
+                 "${GRAD_MVM}" "${IMPACTS}" "${GROWTH}" "${FLAG}" \
+                 >> ${SUMMARY}
+        done
+
+        echo ""
+        echo "============================================="
+        echo "  Track3P Multipacting Onset Summary"
+        echo "============================================="
+        column -t ${SUMMARY}
+        echo ""
+        if [ "${ONSET_FOUND}" -eq 1 ]; then
+          echo "  >>> Multipacting onset detected at ${ONSET_GRAD} MV/m <<<"
+        else
+          echo "  >>> No multipacting onset detected in swept range <<<"
+          echo "  >>> Consider extending sweep beyond 50 MV/m          <<<"
+        fi
+        echo "============================================="
+
+        # Machine-readable result for downstream workflows
+        echo "ONSET_GRADIENT_MVM=${ONSET_GRAD}" > onset_result.env
+      depends: [track_*, postprocess_*]
+      nodes: 1
+      procs: 1
+      walltime: "00:10:00"
