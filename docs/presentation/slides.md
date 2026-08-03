@@ -189,17 +189,56 @@ EC approaches 1.0 at 24–25 MV/m — onset of sustained multipacting.
 
 ---
 
+# End-to-End Pipeline
+
+```
+User types description → AI generates YAML → Maestro submits → Slurm runs → Plots generated
+      ~5 seconds            ~5 sec             instant         ~5 min         ~2 sec
+```
+
+**One-command demo:**
+```bash
+cd demos/track3p-sweep
+./run-demo.sh "Sweep gradient from 10 to 50 MV/m in Track3P for pillbox cavity"
+```
+
+**Output:** `results/multipacting_map.png`, `results/enhancement_counter.png`, `results/summary.txt`
+
+---
+
 # Live Demo
 
-## Natural Language → AI Generates Workflow → Runs on S3DF
+## Running in Claude Code (AI agent session)
 
-```bash
-conda activate workflow-s3df
-export ANTHROPIC_API_KEY="$ANTHROPIC_AUTH_TOKEN"
-cd /sdf/group/rfar/lge/sdf/workflow/ai-assist/workflow-generator
+```
+! python /sdf/group/rfar/lge/sdf/workflow/ai-assist/workflow-generator/generator.py
+  "Sweep gradient from 10 to 50 MV/m in Track3P to find multipacting onset"
+```
 
-python generator.py "Sweep gradient from 10 to 50 MV/m
-  in Track3P to find multipacting onset"
+The `!` prefix runs the command within the AI agent session where credentials are available.
+
+**Pre-generated output:** [demo-output-track3p.yaml](demo-output-track3p.yaml)
+
+---
+
+# Actual Results (from completed S3DF runs)
+
+**Track3P Multipacting Summary:**
+```
+Field levels scanned: 3
+  23.0 MV/m: 506 resonant particles
+  24.0 MV/m: 370 resonant particles
+  25.0 MV/m: 496 resonant particles
+
+Enhancement counter max: 0.9794
+EC < 1 at all levels — multipacting decays
+```
+
+**FE Convergence:**
+```
+FE Order 1: 1.31275 GHz (0.08% error,  15,124 DOFs)
+FE Order 2: 1.31381 GHz (<0.001%,      83,476 DOFs)
+FE Order 3: 1.31383 GHz (converged,   245,616 DOFs)
 ```
 
 ---
@@ -209,5 +248,7 @@ python generator.py "Sweep gradient from 10 to 50 MV/m
 **Repository:** https://github.com/lge0303/s3df-workflow
 
 **Dashboard:** https://github.com/lge0303/ace3p-dashboard
+
+**End-to-end docs:** https://github.com/lge0303/s3df-workflow/blob/main/docs/end-to-end-workflow.md
 
 **Contact:** lge@slac.stanford.edu

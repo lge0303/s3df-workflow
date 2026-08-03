@@ -1,22 +1,21 @@
 # Live Demo Script — AI Agentic Workflow Tool
 
+## IMPORTANT: How to Run the Demo
+
+The AI generator requires the `ANTHROPIC_AUTH_TOKEN` which is only available **inside a Claude Code session**. You cannot run it from a regular SSH terminal.
+
+**Two ways to demo:**
+1. **Live in Claude Code** — type `! python generator.py "prompt"` (the `!` runs shell commands)
+2. **Show pre-generated output** — `cat docs/presentation/demo-output-track3p.yaml`
+
 ## Pre-Demo Setup (do 5 minutes before the meeting)
 
 ```bash
-# Terminal 1: Setup environment
-conda activate workflow-s3df
-export ANTHROPIC_API_KEY="$ANTHROPIC_AUTH_TOKEN"
-export TMPDIR=/sdf/group/rfar/lge/sdf/workflow/.tmp
-cd /sdf/group/rfar/lge/sdf/workflow/ai-assist/workflow-generator
+# Open Claude Code on S3DF (this gives you the AI agent + API access)
+claude
 
-# Verify everything works (quick test)
-python generator.py "test" 2>&1 | head -3
-# Should see: "Generating maestro workflow for: test"
-```
-
-```bash
-# Terminal 2: Have results ready to show
-cd /sdf/group/rfar/lge/sdf/workflow/maestro
+# Have a browser tab open to GitHub for showing plots:
+# https://github.com/lge0303/s3df-workflow/tree/main/docs/figures
 ```
 
 ---
@@ -27,9 +26,9 @@ cd /sdf/group/rfar/lge/sdf/workflow/maestro
 
 **Say:** "I'll show how a researcher can go from a description of what they want to a running HPC workflow in one command."
 
-```bash
-# Show the command (type it slowly so audience reads it)
-python generator.py "Sweep gradient from 10 to 50 MV/m in Track3P to find multipacting onset"
+**In Claude Code, type:**
+```
+! python /sdf/group/rfar/lge/sdf/workflow/ai-assist/workflow-generator/generator.py "Sweep gradient from 10 to 50 MV/m in Track3P to find multipacting onset"
 ```
 
 **Wait for output.** The YAML scrolls naturally — audience sees the AI producing a complete, structured workflow.
@@ -41,14 +40,20 @@ python generator.py "Sweep gradient from 10 to 50 MV/m in Track3P to find multip
 - "The fan-in step at the end detects multipacting onset"
 - "Validation: PASSED — this YAML is ready to run as-is"
 
+**Backup (if API is slow):** Show the pre-generated file:
+```
+! cat /sdf/group/rfar/lge/sdf/workflow/docs/presentation/demo-output-track3p.yaml
+```
+
 ---
 
 ### Part 2: Show a Different Workflow (1 min)
 
 **Say:** "It works for any ACE3P scenario. Here's a Merlin workflow with fault tolerance:"
 
-```bash
-python generator.py --tool merlin "Run Omega3P sweep varying iris radius from 30mm to 32mm in 0.5mm steps"
+**In Claude Code, type:**
+```
+! python /sdf/group/rfar/lge/sdf/workflow/ai-assist/workflow-generator/generator.py --tool merlin "Run Omega3P sweep varying iris radius from 30mm to 32mm in 0.5mm steps"
 ```
 
 **Point out:**
